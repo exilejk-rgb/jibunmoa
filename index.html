@@ -300,8 +300,17 @@ function parseInput(raw){
 }
 
 async function callAPI(addrPart,mainNo,subNo){
-  const params=new URLSearchParams({addrdetail:addrPart,numMain:mainNo,numSub:subNo||'0'});
-  const res=await fetch('/api/land?'+params.toString());
+  const params=new URLSearchParams({
+    key:'6BCCB1B5-0A6C-33A1-A7AC-15BE0CCACD63',
+    domain:'jibunmoa.vercel.app',
+    addrdetail:addrPart,
+    numMain:mainNo,
+    numSub:subNo||'0',
+    format:'json',
+  });
+  const target='https://api.vworld.kr/ned/data/getLandCharacteristics?'+params.toString();
+  const proxy='https://corsproxy.io/?url='+encodeURIComponent(target);
+  const res=await fetch(proxy);
   if(!res.ok) throw new Error('NETWORK');
   return res.json();
 }
