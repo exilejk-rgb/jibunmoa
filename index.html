@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>지번모아 — 필지 조회</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;background:#f4f4f4;color:#1a1a1a;min-height:100vh;padding:0 0 80px}
+
+/* 헤더 */
+.header{background:#fff;border-bottom:1px solid #e5e5e5;padding:18px 20px 14px}
+.header-top{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.header-title{font-size:20px;font-weight:900;color:#1a1a1a}
+.header-sub-badge{font-size:11px;font-weight:700;color:#fff;background:#2e7d32;border-radius:4px;padding:2px 7px}
+.header-desc{font-size:13px;color:#888}
+
+/* 본문 */
+.container{max-width:600px;margin:0 auto;padding:20px 16px 0}
+
+/* 검색 섹션 */
+.section-label{font-size:11px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px}
+.search-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.07);margin-bottom:12px}
+.search-guide{font-size:12px;color:#2e7d32;background:#f1f8f1;border-radius:6px;padding:8px 12px;margin-bottom:12px;line-height:1.6}
+.search-row{display:flex;gap:8px}
+.search-input{flex:1;border:1.5px solid #e0e0e0;border-radius:8px;padding:12px 14px;font-size:15px;font-family:'Noto Sans KR',sans-serif;color:#1a1a1a;outline:none;transition:border-color .2s;background:#fafafa}
+.search-input::placeholder{color:#bbb}
+.search-input:focus{border-color:#2e7d32;background:#fff}
+.btn-search{background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:0 20px;font-size:15px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn-search:hover{background:#1b5e20}
+.btn-search:active{transform:scale(.97)}
+
+/* 상태 메시지 */
+.loader{display:none;align-items:center;gap:8px;padding:14px 0;color:#2e7d32;font-size:13px}
+.loader.show{display:flex}
+.spin{width:16px;height:16px;border:2px solid #c8e6c9;border-top-color:#2e7d32;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.msg-notfound{display:none;padding:12px 14px;background:#fff8f0;border-radius:8px;border-left:3px solid #ff8f00;font-size:13px;color:#6d4c00;margin-top:4px}
+.msg-notfound.show{display:block}
+.msg-notfound strong{display:block;font-weight:700;margin-bottom:2px}
+.msg-err{display:none;padding:12px 14px;background:#fff0f0;border-radius:8px;border-left:3px solid #e53935;font-size:12.5px;color:#b71c1c;margin-top:4px;line-height:1.7;white-space:pre-line}
+.msg-err.show{display:block}
+
+/* 미리보기 카드 */
+.preview-card{display:none;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.07);overflow:hidden;margin-top:10px;border:2px solid #a5d6a7;animation:fadeup .25s ease}
+.preview-card.show{display:block}
+@keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.preview-body{padding:14px 16px 10px}
+.preview-addr{font-size:11.5px;color:#888;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview-top{display:flex;align-items:center;gap:12px}
+.jibun-badge{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;flex-shrink:0}
+.preview-info{flex:1;min-width:0}
+.preview-area-big{font-size:22px;font-weight:900;color:#1a1a1a}
+.preview-area-big span{font-size:13px;color:#888;font-weight:400;margin-left:4px}
+.preview-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
+.ptag{font-size:11.5px;padding:3px 8px;border-radius:5px;font-weight:500}
+.ptag-yongdo{background:#e8f5e9;color:#1b5e20}
+.ptag-road{background:#e8f5e9;color:#1b5e20}
+.ptag-maengji{background:#fce4ec;color:#880e4f}
+.preview-gongsi{padding:10px 16px 14px;border-top:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between}
+.gongsi-label{font-size:11px;color:#aaa;margin-bottom:2px}
+.gongsi-val{font-size:13px;font-weight:700;color:#1a1a1a}
+.btn-add{background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:.15s}
+.btn-add:hover{background:#1b5e20}
+.btn-add:active{transform:scale(.97)}
+.already-tag{font-size:12px;color:#aaa}
+
+/* 구분선 */
+.divider{height:1px;background:#e8e8e8;margin:20px 0}
+
+/* 필지 목록 */
+.section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.section-title{font-size:13px;font-weight:700;color:#555;display:flex;align-items:center;gap:6px}
+.count-badge{background:#2e7d32;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700}
+.btn-clear{background:none;border:1px solid #e0e0e0;color:#aaa;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:.15s;display:none}
+.btn-clear.show{display:block}
+.btn-clear:hover{border-color:#e53935;color:#e53935}
+.basket-empty{padding:28px 0;text-align:center;color:#ccc;font-size:13px;line-height:2;border:1.5px dashed #e0e0e0;border-radius:10px;background:#fafafa}
+
+/* 필지 아이템 카드 */
+.bitem{background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px;animation:fadeup .2s ease}
+.bitem-num{width:26px;height:26px;border-radius:50%;background:#2e7d32;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.jibun-sm{width:38px;height:38px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0}
+.bitem-info{flex:1;min-width:0}
+.bitem-key{font-size:12px;color:#aaa;margin-bottom:3px}
+.bitem-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bitem-area{font-size:15px;font-weight:700;color:#1a1a1a}
+.bitem-pyeong{font-size:11.5px;color:#aaa}
+.bitem-road{font-size:11px;padding:2px 7px;border-radius:4px;font-weight:600}
+.bitem-road-y{background:#e8f5e9;color:#1b5e20}
+.bitem-road-n{background:#fce4ec;color:#880e4f}
+.bitem-amt{font-size:12.5px;font-weight:700;color:#2e7d32;margin-left:auto;white-space:nowrap}
+.btn-remove{background:none;border:none;color:#ccc;cursor:pointer;font-size:20px;line-height:1;padding:0 2px;transition:color .15s;flex-shrink:0}
+.btn-remove:hover{color:#e53935}
+.hint-1more{font-size:12px;color:#bbb;text-align:center;padding:8px 0;display:none}
+.hint-1more.show{display:block}
+
+/* 합산 패널 */
+.sum-panel{background:#2e7d32;border-radius:14px;padding:20px;margin-top:4px;display:none;animation:fadeup .3s ease}
+.sum-panel.show{display:block}
+.sum-panel-label{font-size:10px;color:#a5d6a7;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px}
+.sum-area-big{font-size:38px;font-weight:900;color:#fff;letter-spacing:-.02em;line-height:1}
+.sum-area-unit{font-size:15px;color:#a5d6a7}
+.sum-pyeong{font-size:12px;color:#a5d6a7;margin-top:4px}
+.sum-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.15);border-radius:8px;overflow:hidden;margin-top:16px}
+.sum-cell{background:#1b5e20;padding:13px 16px}
+.sum-cell-label{font-size:10px;color:#a5d6a7;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+.sum-cell-val{font-size:17px;font-weight:800;color:#fff}
+.sum-cell-sub{font-size:11px;color:#81c784;margin-top:2px}
+.sum-maengji{margin-top:12px;font-size:12px;font-weight:600}
+.sum-maengji-warn{color:#ffcc02}
+.sum-maengji-ok{color:#a5d6a7}
+
+/* 저장 버튼 */
+.save-section{margin-top:16px}
+.btn-save{width:100%;padding:16px;border-radius:12px;border:none;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px;transition:.2s}
+.btn-save-active{background:#1565c0;color:#fff;box-shadow:0 4px 16px rgba(21,101,192,.3)}
+.btn-save-active:hover{background:#0d47a1;transform:translateY(-1px)}
+.btn-save-done{background:#2e7d32;color:#fff}
+.btn-save-disabled{background:#e0e0e0;color:#bbb;cursor:default}
+.btn-save-loading{background:#1565c0;color:#fff;opacity:.75;cursor:wait}
+.save-hint{margin-top:6px;font-size:11.5px;color:#aaa;text-align:center}
+
+/* 푸터 */
+.footer-disc{margin-top:24px;font-size:11px;color:#ccc;line-height:1.7;text-align:center}
+.footer-madeby{margin-top:20px;padding:16px 0 8px;border-top:1px solid #e8e8e8;text-align:center}
+.footer-madeby-label{font-size:10px;color:#ccc;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px}
+.footer-madeby-card{display:inline-flex;align-items:center;gap:10px;background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:10px 18px;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+.footer-madeby-dot{width:8px;height:8px;border-radius:50%;background:#2e7d32;flex-shrink:0}
+.footer-madeby-name{font-size:13px;font-weight:700;color:#333}
+.footer-madeby-org{font-size:11px;color:#aaa;margin-top:1px}
+
+/* 숨김 캡처 */
+.export-hidden{position:fixed;left:-9999px;top:0;pointer-events:none;z-index:-1}
+</style>
+</head>
+<body>
+
+<div class="export-hidden">
+  <div id="exportCard" style="width:640px;background:#fff;font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;padding:32px 36px 28px;box-sizing:border-box"></div>
+</div>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-top">
+    <span class="header-title">지번모아</span>
+    <span class="header-sub-badge">필지 조회</span>
+  </div>
+  <div class="header-desc">지번을 입력해 면적·공시지가를 즉시 확인하세요 · 최대 10필지까지 합산 가능합니다</div>
+</div>
+
+<div class="container">
+
+  <!-- 검색 -->
+  <div style="margin-top:16px">
+    <div class="section-label">지번 검색</div>
+    <div class="search-card">
+      <div class="search-guide">
+        입력 예시 &nbsp;▸&nbsp; 용산동 16 &nbsp;/&nbsp; 수안보면 온천리 1-1 &nbsp;/&nbsp; 중앙탑면 탑평리 11<br>
+        <span style="color:#aaa">시·군·구 생략 가능 · 번지는 숫자만 (예: 16, 1-1) · 최대 10필지 합산</span>
+      </div>
+      <div class="search-row">
+        <input class="search-input" id="searchInput" placeholder="예) 용산동 16" />
+        <button class="btn-search" onclick="doSearch()">조회</button>
+      </div>
+    </div>
+
+    <div class="loader" id="loader"><div class="spin"></div>API 조회 중...</div>
+    <div class="msg-notfound" id="notFound"><strong>결과 없음</strong>해당 지번을 찾을 수 없습니다. 시·군·구·동·번지를 확인해주세요.</div>
+    <div class="msg-err" id="errBox"></div>
+
+    <!-- 미리보기 -->
+    <div class="preview-card" id="preview">
+      <div class="preview-body">
+        <div class="preview-addr" id="previewAddr"></div>
+        <div class="preview-top">
+          <div class="jibun-badge" id="previewBadge"></div>
+          <div class="preview-info">
+            <div class="preview-area-big" id="previewArea"></div>
+            <div class="preview-tags" id="previewMeta"></div>
+          </div>
+        </div>
+      </div>
+      <div class="preview-gongsi">
+        <div>
+          <div class="gongsi-label">공시지가</div>
+          <div class="gongsi-val" id="previewGongsi"></div>
+        </div>
+        <span class="already-tag" id="alreadyTag" style="display:none">이미 추가됨</span>
+        <button class="btn-add" id="addBtn" onclick="addToBasket()">+ 추가</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 필지 목록 -->
+  <div class="section-header">
+    <div class="section-title">
+      추가된 필지
+      <span class="count-badge" id="bcnt" style="display:none"></span>
+    </div>
+    <button class="btn-clear" id="clearBtn" onclick="clearAll()">전체 삭제</button>
+  </div>
+
+  <div class="basket-empty" id="bempty">조회 후 [+ 추가]를 눌러<br>필지를 쌓아주세요</div>
+  <div id="blist"></div>
+  <div class="hint-1more" id="hint1more">필지를 1개 더 추가하면 합산 요약이 표시됩니다</div>
+
+  <!-- 합산 패널 -->
+  <div class="sum-panel" id="sumPanel">
+    <div class="sum-panel-label">합산 면적</div>
+    <div>
+      <span class="sum-area-big" id="sumArea"></span>
+      <span class="sum-area-unit"> ㎡</span>
+    </div>
+    <div class="sum-pyeong" id="sumPyeong"></div>
+    <div class="sum-grid">
+      <div class="sum-cell">
+        <div class="sum-cell-label">공시지가 총액</div>
+        <div class="sum-cell-val" id="sumTotal"></div>
+        <div class="sum-cell-sub" id="sumTotalRaw"></div>
+      </div>
+      <div class="sum-cell">
+        <div class="sum-cell-label">평균 공시지가</div>
+        <div class="sum-cell-val" style="font-size:14px" id="sumAvg"></div>
+        <div class="sum-cell-sub" id="sumAvgRaw"></div>
+      </div>
+    </div>
+    <div class="sum-maengji" id="sumMaengji"></div>
+  </div>
+
+  <!-- 이미지 저장 -->
+  <div class="save-section">
+    <button class="btn-save btn-save-disabled" id="saveBtn" onclick="handleSave()">
+      ⬇ 이미지로 저장 (감정담당자 전송용)
+    </button>
+    <div class="save-hint" id="saveHint"></div>
+  </div>
+
+  <div class="footer-disc">
+    국토교통부 공공데이터 API 기반 · 공시지가 총액 = 공시지가(원/㎡) × 면적 합산<br>
+    맹지 판단은 지목 기준 추정값이며 법적 효력이 없습니다
+  </div>
+
+  <div class="footer-madeby">
+    <div class="footer-madeby-label">Made by</div>
+    <div class="footer-madeby-card">
+      <div class="footer-madeby-dot"></div>
+      <div>
+        <div class="footer-madeby-name">김준한</div>
+        <div class="footer-madeby-org">충주농협</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const JIBUN_COLOR = {
+  '전' :{bg:'#e8f5e9',border:'#4caf50',text:'#1b5e20'},
+  '답' :{bg:'#e3f2fd',border:'#2196f3',text:'#0d47a1'},
+  '대' :{bg:'#fff8e1',border:'#ffb300',text:'#e65100'},
+  '임야':{bg:'#e8f5e9',border:'#388e3c',text:'#1b5e20'},
+  '잡종지':{bg:'#ede7f6',border:'#7e57c2',text:'#4527a0'},
+  '도로':{bg:'#f5f5f5',border:'#9e9e9e',text:'#424242'},
+  '하천':{bg:'#e1f5fe',border:'#0288d1',text:'#01579b'},
+  '구거':{bg:'#e1f5fe',border:'#0288d1',text:'#01579b'},
+};
+const ROAD_JIBUN=['대','공장용지','학교용지','주차장','주유소용지','창고용지','도로','철도용지'];
+
+let basket=[], currentPreview=null;
+
+function m2p(m2){return(m2/3.3058).toFixed(1)}
+function fmtWon(w){
+  if(w>=1e12)return`${(w/1e12).toFixed(2)}조원`;
+  if(w>=1e8)return`${(w/1e8).toFixed(1)}억원`;
+  if(w>=1e4)return`${Math.round(w/1e4).toLocaleString()}만원`;
+  return`${w.toLocaleString()}원`;
+}
+function fmtG(w){
+  if(w>=1e4)return`${Math.round(w/1e4).toLocaleString()}만원/㎡`;
+  return`${w.toLocaleString()}원/㎡`;
+}
+function todayStr(){
+  const d=new Date();
+  return`${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+}
+function jColor(j){return JIBUN_COLOR[j]||JIBUN_COLOR['도로']}
+
+function parseInput(raw){
+  const s=raw.trim();
+  const match=s.match(/^(.*?)\s+(\d+(?:-\d+)?)$/);
+  if(!match)return null;
+  const[,addrPart,bunji]=match;
+  const[mainNo,subNo='0']=bunji.split('-');
+  return{addrPart:addrPart.trim(),mainNo,subNo};
+}
+
+async function callAPI(addrPart,mainNo,subNo){
+  const params=new URLSearchParams({addrdetail:addrPart,numMain:mainNo,numSub:subNo||'0'});
+  const res=await fetch('/api/land?'+params.toString());
+  if(!res.ok) throw new Error('NETWORK');
+  return res.json();
+}
+
+document.getElementById('searchInput').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch()});
+
+async function doSearch(){
+  const raw=document.getElementById('searchInput').value;
+  const parsed=parseInput(raw);
+  ['notFound','errBox'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  document.getElementById('preview').classList.remove('show');
+  currentPreview=null;
+  if(!parsed){showErr('입력 형식을 확인해주세요.\n예) 용산동 16 · 수안보면 온천리 1-1');return;}
+  document.getElementById('loader').classList.add('show');
+  try{
+    const data=await callAPI(parsed.addrPart,parsed.mainNo,parsed.subNo);
+    document.getElementById('loader').classList.remove('show');
+    handleResult(data,raw.trim());
+  }catch(e){
+    document.getElementById('loader').classList.remove('show');
+    if(e.message==='TIMEOUT') showErr('API 응답 시간이 초과됐습니다.\n잠시 후 다시 시도해주세요.');
+    else showErr('API 호출 오류가 발생했습니다.\n\n※ 로컬 파일(file://)에서는 CORS 제한으로 동작하지 않습니다.\n  Vercel 배포 후 정상 동작합니다.');
+  }
+}
+
+function handleResult(data,inputKey){
+  try{
+    const result=data?.landCharacteristicss?.landCharacteristics;
+    if(!result||result.length===0){document.getElementById('notFound').classList.add('show');return;}
+    const item=result[0];
+    const area_m2=parseFloat(item.lndpclAr||item.area||0);
+    const jibun=item.lndcgrCodeNm||item.jibun||'기타';
+    const yongdo=item.prposArea1Nm||item.yongdo||'정보없음';
+    const gongsi=parseFloat(item.pblntfPclnd||item.gongsi||0);
+    const sigungu=item.sigunguNm||'';
+    const emd=item.emdNm||'';
+    const ri=item.riNm||'';
+    const mainNo=item.mnnmSlno||item.mainNo||'';
+    const subNo=item.slno||item.subNo||'';
+    const bunjiStr=subNo&&subNo!=='0'?`${mainNo}-${subNo}`:mainNo;
+    const fullAddr=`${sigungu} ${emd}${ri?' '+ri:''} ${bunjiStr}`.trim();
+    const road_access=ROAD_JIBUN.includes(jibun)||(yongdo&&(yongdo.includes('상업')||yongdo.includes('주거')||yongdo.includes('공업')));
+    currentPreview={key:inputKey,address:fullAddr||inputKey,area_m2,jibun,yongdo,gongsi,road_access};
+    renderPreview(currentPreview);
+  }catch(e){showErr('API 응답 파싱 오류: '+e.message)}
+}
+
+function showErr(msg){const el=document.getElementById('errBox');el.textContent=msg;el.classList.add('show')}
+
+function renderPreview(p){
+  const c=jColor(p.jibun);
+  const badge=document.getElementById('previewBadge');
+  badge.textContent=p.jibun;
+  badge.style.cssText=`width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;flex-shrink:0;background:${c.bg};border:2px solid ${c.border};color:${c.text}`;
+  document.getElementById('previewAddr').textContent=p.address;
+  document.getElementById('previewArea').innerHTML=`${p.area_m2.toLocaleString()}<span>㎡ · ${m2p(p.area_m2)}평</span>`;
+  document.getElementById('previewMeta').innerHTML=
+    `<span class="ptag ptag-yongdo">${p.yongdo}</span>`+
+    `<span class="ptag ${p.road_access?'ptag-road':'ptag-maengji'}">${p.road_access?'도로 접함':'맹지 추정'}</span>`;
+  document.getElementById('previewGongsi').textContent=p.gongsi>0
+    ?`${fmtG(p.gongsi)} · 총 ${fmtWon(p.area_m2*p.gongsi)}`:'공시지가 정보 없음';
+  const inBasket=basket.find(b=>b.key===p.key);
+  document.getElementById('alreadyTag').style.display=inBasket?'':'none';
+  document.getElementById('addBtn').style.display=inBasket?'none':'';
+  document.getElementById('preview').classList.add('show');
+}
+
+function addToBasket(){
+  if(!currentPreview||basket.find(b=>b.key===currentPreview.key))return;
+  if(basket.length>=10){
+    alert('최대 10필지까지 추가할 수 있습니다.');
+    return;
+  }
+  basket.push(currentPreview);
+  currentPreview=null;
+  document.getElementById('preview').classList.remove('show');
+  document.getElementById('searchInput').value='';
+  renderBasket();renderSum();updateSaveBtn();
+}
+function removeFromBasket(key){basket=basket.filter(b=>b.key!==key);renderBasket();renderSum();updateSaveBtn()}
+function clearAll(){basket=[];renderBasket();renderSum();updateSaveBtn()}
+
+function renderBasket(){
+  const bempty=document.getElementById('bempty');
+  const blist=document.getElementById('blist');
+  const bcnt=document.getElementById('bcnt');
+  const clearBtn=document.getElementById('clearBtn');
+  const hint1=document.getElementById('hint1more');
+  if(basket.length===0){
+    bempty.style.display='';blist.innerHTML='';
+    bcnt.style.display='none';clearBtn.classList.remove('show');
+    hint1.classList.remove('show');return;
+  }
+  bempty.style.display='none';
+  bcnt.style.display='';bcnt.textContent=basket.length;
+  clearBtn.classList.add('show');
+  hint1.classList.toggle('show',basket.length===1);
+  blist.innerHTML=basket.map((b,i)=>{
+    const c=jColor(b.jibun);
+    return`<div class="bitem">
+      <div class="bitem-num">${i+1}</div>
+      <div class="jibun-sm" style="background:${c.bg};border:1.5px solid ${c.border};color:${c.text}">${b.jibun}</div>
+      <div class="bitem-info">
+        <div class="bitem-key">${b.key}</div>
+        <div class="bitem-row">
+          <span class="bitem-area">${b.area_m2.toLocaleString()} ㎡</span>
+          <span class="bitem-pyeong">${m2p(b.area_m2)}평</span>
+          <span class="bitem-road ${b.road_access?'bitem-road-y':'bitem-road-n'}">${b.road_access?'도로접함':'맹지추정'}</span>
+          <span class="bitem-amt">${b.gongsi>0?fmtWon(b.area_m2*b.gongsi):'-'}</span>
+        </div>
+      </div>
+      <button class="btn-remove" onclick="removeFromBasket('${b.key.replace(/'/g,"\\'")}')">×</button>
+    </div>`;
+  }).join('');
+}
+
+function renderSum(){
+  const panel=document.getElementById('sumPanel');
+  if(basket.length<2){panel.classList.remove('show');return}
+  panel.classList.add('show');
+  const totalArea=basket.reduce((s,b)=>s+b.area_m2,0);
+  const totalAmt=basket.reduce((s,b)=>s+(b.gongsi>0?b.area_m2*b.gongsi:0),0);
+  const avgG=totalArea>0?totalAmt/totalArea:0;
+  const hasMaengji=basket.some(b=>!b.road_access);
+  document.getElementById('sumArea').textContent=totalArea.toLocaleString(undefined,{maximumFractionDigits:1});
+  document.getElementById('sumPyeong').textContent=`${m2p(totalArea)} 평 · ${basket.length}필지`;
+  document.getElementById('sumTotal').textContent=fmtWon(totalAmt);
+  document.getElementById('sumTotalRaw').textContent=totalAmt.toLocaleString()+'원';
+  document.getElementById('sumAvg').textContent=fmtG(Math.round(avgG));
+  document.getElementById('sumAvgRaw').textContent=Math.round(avgG).toLocaleString()+'원/㎡';
+  document.getElementById('sumMaengji').innerHTML=hasMaengji
+    ?'<span class="sum-maengji-warn">⚠ 맹지 추정 필지 포함 — 도로접면 별도 확인 필요</span>'
+    :'<span class="sum-maengji-ok">✓ 전 필지 도로 접면 확인됨</span>';
+}
+
+function updateSaveBtn(){
+  const btn=document.getElementById('saveBtn');
+  const hint=document.getElementById('saveHint');
+  if(basket.length===0){
+    btn.className='btn-save btn-save-disabled';
+    btn.textContent='⬇ 이미지로 저장 (감정담당자 전송용)';
+    hint.textContent='';
+  }else{
+    btn.className='btn-save btn-save-active';
+    btn.textContent='⬇ 이미지로 저장 (감정담당자 전송용)';
+    hint.textContent='PNG 파일로 저장 · 카카오톡 · 이메일 첨부 가능';
+  }
+}
+
+function buildExportCard(){
+  const totalArea=basket.reduce((s,b)=>s+b.area_m2,0);
+  const totalAmt=basket.reduce((s,b)=>s+(b.gongsi>0?b.area_m2*b.gongsi:0),0);
+  const avgG=totalArea>0?totalAmt/totalArea:0;
+  const hasMaengji=basket.some(b=>!b.road_access);
+  const rows=basket.map((b,i)=>{
+    const c=jColor(b.jibun);
+    return`<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f0f0f0">
+      <div style="width:22px;height:22px;border-radius:50%;background:#2e7d32;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+      <div style="width:34px;height:34px;border-radius:6px;background:${c.bg};border:1.5px solid ${c.border};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:${c.text};flex-shrink:0">${b.jibun}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:#888;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.address}</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800;color:#1a1a1a">${b.area_m2.toLocaleString()} ㎡</span>
+          <span style="font-size:11px;color:#aaa">${m2p(b.area_m2)}평</span>
+          <span style="font-size:11px;color:#aaa">${b.yongdo}</span>
+          <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:${b.road_access?'#e8f5e9':'#fce4ec'};color:${b.road_access?'#1b5e20':'#880e4f'}">${b.road_access?'도로접함':'맹지추정'}</span>
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:10px;color:#bbb">공시지가 총액</div>
+        <div style="font-size:14px;font-weight:800;color:#1a1a1a">${b.gongsi>0?fmtWon(b.area_m2*b.gongsi):'-'}</div>
+        <div style="font-size:10px;color:#bbb">${b.gongsi>0?fmtG(b.gongsi):''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return`<div style="border-bottom:2.5px solid #2e7d32;padding-bottom:14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div style="font-size:18px;font-weight:900;color:#1a1a1a">토지모아 <span style="font-size:12px;background:#2e7d32;color:#fff;border-radius:4px;padding:2px 7px;font-weight:700;vertical-align:middle">필지 조회 결과</span></div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">국토교통부 공공데이터 API 기준</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:#aaa">조회일</div>
+      <div style="font-size:13px;font-weight:700;color:#1a1a1a">${todayStr()}</div>
+      <div style="font-size:11px;color:#aaa;margin-top:2px">${basket.length}필지</div>
+    </div>
+  </div>
+  ${rows}
+  <div style="margin-top:14px;background:#f1f8f1;border-radius:10px;padding:14px 18px;border:1.5px solid #c8e6c9">
+    <div style="font-size:10px;color:#81c784;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px">합산 요약</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div>
+        <div style="font-size:10px;color:#888;margin-bottom:2px">합산 면적</div>
+        <div style="font-size:18px;font-weight:900;color:#2e7d32">${totalArea.toLocaleString(undefined,{maximumFractionDigits:1})} <span style="font-size:12px">㎡</span></div>
+        <div style="font-size:11px;color:#aaa">${m2p(totalArea)} 평</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#888;margin-bottom:2px">공시지가 총액</div>
+        <div style="font-size:16px;font-weight:900;color:#1565c0">${fmtWon(totalAmt)}</div>
+        <div style="font-size:10px;color:#bbb">${totalAmt.toLocaleString()}원</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#888;margin-bottom:2px">평균 공시지가</div>
+        <div style="font-size:13px;font-weight:800;color:#1a1a1a">${fmtG(Math.round(avgG))}</div>
+        <div style="font-size:10px;color:${hasMaengji?'#c62828':'#2e7d32'};font-weight:700;margin-top:3px">${hasMaengji?'⚠ 맹지 추정 필지 포함':'✓ 전 필지 도로 접면'}</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px;font-size:10px;color:#ccc;text-align:center">공시지가 총액 = 공시지가(원/㎡) × 면적 합산 · 맹지 판단은 추정값이며 법적 효력 없음</div>`;
+}
+
+async function handleSave(){
+  if(basket.length===0)return;
+  const btn=document.getElementById('saveBtn');
+  const hint=document.getElementById('saveHint');
+  btn.className='btn-save btn-save-loading';
+  btn.innerHTML='<div class="spin" style="border-top-color:#fff;border-color:#a5d6a7;border-top-color:#fff"></div> 이미지 생성 중...';
+  hint.textContent='';
+  try{
+    const card=document.getElementById('exportCard');
+    card.innerHTML=buildExportCard();
+    const canvas=await html2canvas(card,{scale:2,useCORS:true,backgroundColor:'#ffffff',logging:false});
+    const url=canvas.toDataURL('image/png');
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`토지조회_${todayStr().replace(/\./g,'')}_${basket.length}필지.png`;
+    a.click();
+    btn.className='btn-save btn-save-done';
+    btn.textContent='✓ 저장 완료';
+    hint.style.color='#2e7d32';
+    hint.textContent='다운로드 폴더 또는 사진 앱을 확인하세요';
+    setTimeout(()=>{
+      btn.className='btn-save btn-save-active';
+      btn.textContent='⬇ 이미지로 저장 (감정담당자 전송용)';
+      hint.style.color='#aaa';
+      hint.textContent='PNG 파일로 저장 · 카카오톡 · 이메일 첨부 가능';
+    },3000);
+  }catch(e){
+    alert('이미지 저장 중 오류가 발생했습니다.');
+    btn.className='btn-save btn-save-active';
+    btn.textContent='⬇ 이미지로 저장 (감정담당자 전송용)';
+  }
+}
+</script>
+</body>
+</html>
