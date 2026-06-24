@@ -319,7 +319,13 @@ async function doSearch(){
   try{
     const data=await callAPI(parsed.addrPart,parsed.mainNo,parsed.subNo);
     document.getElementById('loader').classList.remove('show');
-    handleResult(data,raw.trim());
+    // 새 API 응답 구조 처리
+    if(data.success && data.data){
+      currentPreview=data.data;
+      renderPreview(currentPreview);
+    } else {
+      handleResult(data,raw.trim());
+    }
   }catch(e){
     document.getElementById('loader').classList.remove('show');
     if(e.message==='TIMEOUT') showErr('API 응답 시간이 초과됐습니다.\n잠시 후 다시 시도해주세요.');
