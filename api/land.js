@@ -8,64 +8,118 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'params missing' });
   }
 
-  const API_KEY = '017C2FD1-CCDE-3154-95E0-6190E3B00A41';
+  const JUSO_KEY = 'devU01TX0FVVEgyMDI2MDYyNDE2MjQyOTExOTQ5OTc=';
+  const VWORLD_KEY = '017C2FD1-CCDE-3154-95E0-6190E3B00A41';
 
   try {
-    // 1단계: 지번주소 → PNU 변환
+    // 1단계: 행안부 주소검색 API → PNU 획득
     const addrQuery = `${addrdetail} ${numMain}${numSub && numSub !== '0' ? '-' + numSub : ''}`;
-    const addrUrl = new URL('https://api.vworld.kr/req/address');
-    addrUrl.searchParams.set('service', 'address');
-    addrUrl.searchParams.set('request', 'getcoord');
-    addrUrl.searchParams.set('version', '2.0');
-    addrUrl.searchParams.set('crs', 'epsg:4326');
-    addrUrl.searchParams.set('address', addrQuery);
-    addrUrl.searchParams.set('refine', 'true');
-    addrUrl.searchParams.set('simple', 'false');
-    addrUrl.searchParams.set('format', 'json');
-    addrUrl.searchParams.set('type', 'parcel');
-    addrUrl.searchParams.set('key', API_KEY);
+    const jusoUrl = new URL('https://business.juso.go.kr/addrlink/addrLinkApi.do');
+    jusoUrl.searchParams.set('confmKey', JUSO_KEY);
+    jusoUrl.searchParams.set('currentPage', '1');
+    jusoUrl.searchParams.set('countPerPage', '1');
+    jusoUrl.searchParams.set('keyword', addrQuery);
+    jusoUrl.searchParams.set('resultType', 'json');
 
-    const addrRes = await fetch(addrUrl.toString(), {
-      headers: { 'Referer': 'https://jibunmoa.vercel.app/', 'User-Agent': 'Mozilla/5.0' }
-    });
-    const addrText = await addrRes.text();
+    const jusoRes = await fetch(jusoUrl.toString());
+    const jusoText = await jusoRes.text();
 
-    if (addrText.trim().startsWith('<')) {
-      return res.status(502).json({ error: 'vworld_html', message: '주소검색 API HTML 반환' });
+    if (jusoText.trim().startsWith('<')) {
+      return res.status(502).json({ error: 'juso_html', message: '주소 API HTML 반환' });
     }
 
-    const addrData = JSON.parse(addrText);
+    const jusoData = JSON.parse(jusoText);
+    const jusoResult = jusoData?.results?.juso;
 
-    if (!addrData?.response?.result || addrData?.response?.status !== 'OK') {
+    if (!jusoResult || jusoResult.length === 0) {
       return res.status(404).json({ error: 'address_not_found', message: '주소를 찾을 수 없습니다. 시·군·구를 포함해서 입력해주세요.' });
     }
 
-    const addrResult = addrData.response.result;
-    const pnu = addrResult?.zipcode || addrResult?.id;
+    const juso = jusoResult[0];
+    // admCd(행정코드10자리) + 산여부(1) + lnbrMnnm(본번4자리) + lnbrSlno(부번4자리) = PNU 19자리
+    const admCd = juso.admCd || '';
+    const bdKdcd = juso.bdKdcd || '0'; // 0:일반, 1:산
+    const lnbrMnnm = (juso.lnbrMnnm || numMain).padStart(4, '0');
+    const lnbrSlno = (juso.lnbrSlno || numSub || '0').padStart(4, '0');
+    const pnu = `${admCd}${bdKdcd}${lnbrMnnm}${lnbrSlno}`;
 
-    if (!pnu) {
-      return res.status(404).json({ error: 'pnu_not_found', message: 'PNU 추출 실패', addrResult });
+    if (admCd.length < 10) {
+      return res.status(404).json({ error: 'pnu_fail', message: 'PNU 구성 실패', juso });
     }
 
-    // 2단계: PNU → 개별공시지가 조회
+    // 주소 정보 파싱
+    const area_m2 = parseFloat(juso.buldMnnm || 0);
+    const fullAddr = juso.jibunAddr || addrQuery;
+
+    // 2단계: vworld 개별공시지가 조회
     const priceUrl = new URL('https://api.vworld.kr/ned/data/getIndvdLandPriceAttr');
-    priceUrl.searchParams.set('key', API_KEY);
+    priceUrl.searchParams.set('key', VWORLD_KEY);
     priceUrl.searchParams.set('domain', 'jibunmoa.vercel.app');
     priceUrl.searchParams.set('pnu', pnu);
     priceUrl.searchParams.set('format', 'json');
     priceUrl.searchParams.set('numOfRows', '1');
 
-    const priceRes = await fetch(priceUrl.toString(), {
-      headers: { 'Referer': 'https://jibunmoa.vercel.app/', 'User-Agent': 'Mozilla/5.0' }
-    });
+    const priceRes = await fetch(priceUrl.toString());
     const priceText = await priceRes.text();
 
-    if (priceText.trim().startsWith('<')) {
-      return res.status(502).json({ error: 'price_html', message: '공시지가 API HTML 반환', pnu });
+    let priceData = null;
+    let gongsi = 0;
+    let jibun = '대';
+    let yongdo = '정보없음';
+
+    if (!priceText.trim().startsWith('<')) {
+      try {
+        priceData = JSON.parse(priceText);
+        const item = priceData?.indvdLandPrices?.indvdLandPrice?.[0];
+        if (item) {
+          gongsi = parseFloat(item.pblntfPclnd || 0);
+          jibun = item.lndcgrCodeNm || '대';
+          yongdo = item.prposArea1Nm || '정보없음';
+        }
+      } catch(e) {}
     }
 
-    const priceData = JSON.parse(priceText);
-    return res.status(200).json({ ...priceData, _address: addrResult, _pnu: pnu });
+    // 3단계: 토지임야정보로 면적 조회 (vworld)
+    const landUrl = new URL('https://api.vworld.kr/ned/data/getLandCharacteristics');
+    landUrl.searchParams.set('key', VWORLD_KEY);
+    landUrl.searchParams.set('domain', 'jibunmoa.vercel.app');
+    landUrl.searchParams.set('pnu', pnu);
+    landUrl.searchParams.set('format', 'json');
+    landUrl.searchParams.set('numOfRows', '1');
+
+    let finalArea = 0;
+    try {
+      const landRes = await fetch(landUrl.toString());
+      const landText = await landRes.text();
+      if (!landText.trim().startsWith('<')) {
+        const landData = JSON.parse(landText);
+        const landItem = landData?.landCharacteristicss?.landCharacteristic?.[0];
+        if (landItem) {
+          finalArea = parseFloat(landItem.lndpclAr || 0);
+          jibun = landItem.lndcgrCodeNm || jibun;
+          yongdo = landItem.prposArea1Nm || yongdo;
+        }
+      }
+    } catch(e) {}
+
+    // 도로 접면 여부 추정
+    const ROAD_JIBUN = ['대','공장용지','학교용지','주차장','주유소용지','창고용지','도로','철도용지'];
+    const road_access = ROAD_JIBUN.includes(jibun) ||
+      (yongdo && (yongdo.includes('상업') || yongdo.includes('주거') || yongdo.includes('공업')));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        key: addrQuery,
+        address: fullAddr,
+        area_m2: finalArea,
+        jibun,
+        yongdo,
+        gongsi,
+        road_access,
+        pnu,
+      }
+    });
 
   } catch (e) {
     return res.status(500).json({ error: e.message });
